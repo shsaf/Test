@@ -1,0 +1,46 @@
+#!/bin/sh
+
+# Enter user(s) patterns you want to match against (user admin bobsAccount)
+export usersToMatch="admin it"
+
+LAST_ITEM="${usersToMatch##* }"
+
+regexPattern=""
+
+for user in $usersToMatch; do
+    echo "adding $user to regex pattern"
+    if [ "$user" = "$LAST_ITEM" ]; then
+        regexPattern="${regexPattern:+${regexPattern}}${user}[^\s]*"
+    else
+        regexPattern="${regexPattern:+${regexPattern}}${user}[^\s]*|"
+    fi
+done
+
+echo "Searching System for the following users: $usersToMatch"
+echo "Regex Pattern: $regexPattern"
+
+allUsers=$(cut -d : -f 1 /etc/passwd)
+
+foundUsers=""
+for value in $allUsers; do
+    if echo "$value" | grep -iqE "$regexPattern"; then
+        echo "found user $value on system"
+        foundUsers="${foundUsers:+${foundUsers}}${value} "
+    fi
+done
+loggedInUsers=$(who -u)
+for user in $foundUsers; do
+    echo "Disabling $user's login shell..."
+
+    if [ $disable = true ]; then
+        if echo "$loggedInUsers" | grep -iqE "$user"; then
+            echo "logging $user out of system"
+            pkill -KILL -u "${user}"
+        fi
+
+        sudo usermod --expiredate 1 $user
+
+        printf "[User]\nSystemAccount=true\n" | sudo tee /var/lib/AccountsService/users/$user
+        sudo systemctl restart accounts-daemon.service
+    fi
+done
